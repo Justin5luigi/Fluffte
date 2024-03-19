@@ -4,10 +4,13 @@
 #include <SDL2/SDL_pixels.h>
 #include <SDL2/SDL_rect.h>
 #include <SDL2/SDL_render.h>
+#include <SDL2/SDL_shape.h>
 #include <SDL2/SDL_stdinc.h>
 #include <SDL2/SDL_surface.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_clipboard.h>
+#include <SDL2/SDL_video.h>
+#include <algorithm>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -18,7 +21,9 @@
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-
+int windowWidth;
+int windowHeight;
+int yOffset = 0;
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) > (b) ? (b) : (a))
 
@@ -67,6 +72,9 @@ bool BackspaceKeyPressed(SDL_Event e) { return e.key.keysym.sym == SDLK_BACKSPAC
 bool EnterKeyPressed(SDL_Event e) { return e.key.keysym.sym == SDLK_RETURN; }
 bool TabKeyPressed(SDL_Event e) { return e.key.keysym.sym == SDLK_TAB; }
 
+
+int GetMaxLines() { return windowHeight / fontSize; }
+
 void InvertColors()
 {
     fontColor.r = 255 - fontColor.r;
@@ -111,6 +119,8 @@ void InitializeSDL()
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
     window = SDL_CreateWindow("Fluffy Text Editor :3", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    //std::cout << "Screen Width: " << SDL_GetWindowSurface(window)->w << std::endl;
+    //std::cout << "Screen Height: " << SDL_GetWindowSurface(window)->h << std::endl;
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 }
 
@@ -177,14 +187,18 @@ void DeleteAtCursorPos()
     lines[cursorPos.y].textBuffer.erase(cursorPos.x - 1, 1);
 }
 
-void RenderText() {
+void RenderText() 
+{
+    SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+    int maxLines = GetMaxLines();
     SDL_SetRenderDrawColor(renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
     SDL_RenderClear(renderer);
 
     SDL_Color textColor = {fontColor.r, fontColor.g, fontColor.b, fontColor.a};
     int y = -fontSize; // Starting y position for the first line
-    for (int i = 0; i < lines.size(); i++) 
+    for (int i = yOffset; i < lines.size(); i++) 
     {
+        if (i > yOffset + maxLines) { break; }
         y += fontSize;
          std::string lineText;
         if (i == cursorPos.y)
@@ -280,6 +294,14 @@ void HandleInput(SDL_Event event)
                 fontSize = MAX(1, fontSize - 1);
                 LoadFont(pth.c_str(), fontSize);
             }
+            else if (event.key.keysym.sym == SDLK_p)
+            {
+                SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+                std::cout << "Initial window size: " << windowWidth << "x" << windowHeight << std::endl;
+                std::cout << "Estimated total lines: " << GetMaxLines() << std::endl;
+                std::cout << "Lines array length: " << lines.size() << std::endl;
+                std::cout << "Line 51: " << lines[51].textBuffer << std::endl;
+            }
         }
         else if (BackspaceKeyPressed(event))  
         {
@@ -295,6 +317,7 @@ void HandleInput(SDL_Event event)
                     std::string move = lines[cursorPos.y].textBuffer;
                     lines.erase(lines.begin() + cursorPos.y);
                     cursorPos.y--;
+                    if (cursorPos.y < yOffset) { yOffset--; }
                     lines[cursorPos.y].textBuffer += move;
                     cursorPos.x = lines[cursorPos.y].textBuffer.size();
                 }
@@ -307,7 +330,8 @@ void HandleInput(SDL_Event event)
             lines[cursorPos.y].textBuffer = keep;
             cursorPos.y++;
             cursorPos.x = 0;
-            lines.insert(lines.begin() + cursorPos.y, line { .textBuffer = move }); 
+            lines.insert(lines.begin() + cursorPos.y, line { .textBuffer = move });
+            if (cursorPos.y > GetMaxLines()) { yOffset++; }
         }
     
         else if (TabKeyPressed(event))
@@ -330,6 +354,7 @@ void HandleInput(SDL_Event event)
             {
                 cursorPos.x = MIN(cursorPos.x, lines[cursorPos.y + 1].textBuffer.size());
                 cursorPos.y++;
+                if (cursorPos.y > yOffset + GetMaxLines()) { yOffset++; }
             }
 
         }
@@ -339,6 +364,7 @@ void HandleInput(SDL_Event event)
             {
                 cursorPos.x = MIN(cursorPos.x, lines[cursorPos.y - 1].textBuffer.size());
                 cursorPos.y--;
+                if (cursorPos.y < yOffset) { yOffset--; }
             }
         }
 
